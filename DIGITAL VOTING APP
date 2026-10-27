@@ -1,0 +1,329 @@
+from kivy.app import App
+from kivy.uix.screenmanager import ScreenManager, Screen
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.label import Label
+from kivy.uix.button import Button
+from kivy.uix.textinput import TextInput
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.gridlayout import GridLayout
+from kivy.clock import Clock
+from kivy.core.window import Window
+from kivy.utils import platform
+import json, os, shutil
+
+SAVE = "voting.json"
+
+def load():
+    if os.path.exists(SAVE):
+        try:
+            return json.load(open(SAVE))
+        except:
+            pass
+    return {"election":{"title":"","place":"","pin":"","total":"","locked":False},"positions":[],"candidates":[],"voters":[]}
+
+def save_data(data):
+    json.dump(data, open(SAVE,"w"))
+
+data = load()
+
+class WelcomeScreen(Screen):
+    def on_enter(self):
+        self.clear_widgets()
+        box = BoxLayout(orientation='vertical', padding=40, spacing=10)
+        box.add_widget(Label(text="", size_hint_y=0.9))
+        box.add_widget(Label(text="DIGITAL", font_size='100sp', bold=True, color=(1,1,1,1)))
+        box.add_widget(Label(text="VOTING SYSTEM", font_size='50sp', bold=True, color=(1,0.84,0,1)))
+        box.add_widget(Label(text="Secure, Transparent and Verifiable\nPlatform for Free and Fair Elections", font_size='20sp', halign='center', color=(0.8,0.8,0.8,1)))
+        box.add_widget(Label(text="APP made By a CBE Learner", font_size='35sp', italic=True, color=(1,0.84,0,1)))
+        box.add_widget(Label(text="KENYA", font_size='66sp', bold=True))
+        self.loading = Label(text="0%", font_size='32sp')
+        box.add_widget(self.loading)
+        box.add_widget(Label(text="", size_hint_y=0.2))
+        self.add_widget(box)
+        self.count = 0
+        Clock.schedule_interval(self.update, 0.06)
+
+    def update(self, dt):
+        self.count += 1
+        self.loading.text = f"{self.count}%"
+        if self.count >= 100:
+            Clock.unschedule(self.update)
+            self.manager.current = "setup"
+
+class SetupScreen(Screen):
+    def on_enter(self):
+        self.clear_widgets()
+        layout = BoxLayout(orientation='vertical')
+        scroll = ScrollView()
+        grid = GridLayout(cols=1, size_hint_y=None, spacing=10, padding=10)
+        grid.bind(minimum_height=grid.setter('height'))
+
+        grid.add_widget(Label(text="ADMIN SETUP - IEBC", size_hint_y=None, height=50, bold=True))
+        
+        locked = data["election"].get("locked", False)
+        if locked:
+            grid.add_widget(Label(text=f"LOCKED: {data['election']['title']}\n{data['election']['place']}\nTotal: {data['election']['total']}", size_hint_y=None, height=80))
+            self.unlock_input = TextInput(hint_text="Enter PIN to unlock", password=True, size_hint_y=None, height=50)
+            grid.add_widget(self.unlock_input)
+            btn = Button(text="UNLOCK", size_hint_y=None, height=60, background_color=(1,0.5,0,1))
+            btn.bind(on_press=self.unlock)
+            grid.add_widget(btn)
+        else:
+            self.e_title = TextInput(hint_text="Election Title *", text=data["election"]["title"], size_hint_y=None, height=50)
+            self.e_place = TextInput(hint_text="School/Place *", text=data["election"]["place"], size_hint_y=None, height=50)
+            self.e_total = TextInput(hint_text="Total Voters", text=data["election"]["total"], size_hint_y=None, height=50)
+            self.e_pin = TextInput(hint_text="SET ADMIN PIN *", text=data["election"]["pin"], password=True, size_hint_y=None, height=50)
+            grid.add_widget(self.e_title)
+            grid.add_widget(self.e_place)
+            grid.add_widget(self.e_total)
+            grid.add_widget(self.e_pin)
+            btn = Button(text="SAVE & LOCK", size_hint_y=None, height=50, background_color=(0,0,1,1))
+            btn.bind(on_press=self.save_e)
+            grid.add_widget(btn)
+
+        grid.add_widget(Label(text="Add Positions", size_hint_y=None, height=30, bold=True))
+        self.e_pos = TextInput(hint_text="e.g., PRESIDENT", size_hint_y=None, height=40)
+        grid.add_widget(self.e_pos)
+        btn = Button(text="ADD POSITION", size_hint_y=None, height=50, background_color=(0,0.6,0,1))
+        btn.bind(on_press=self.add_pos)
+        grid.add_widget(btn)
+        grid.add_widget(Label(text=f"Positions: {', '.join(data['positions']) if data['positions'] else 'None'}", size_hint_y=None, height=40))
+        btn = Button(text="DELETE LAST POSITION", size_hint_y=None, height=40, background_color=(0.5,0.5,0.5,1))
+        btn.bind(on_press=self.del_pos)
+        grid.add_widget(btn)
+
+        grid.add_widget(Button(text="NEXT: ADD CANDIDATES →", size_hint_y=None, height=60, background_color=(0,0,0,1), on_press=lambda x: setattr(self.manager, 'current', 'candidates')))
+        
+        grid.add_widget(Label(text="--- RULES & GUIDE ---", size_hint_y=None, height=30, bold=True))
+        grid.add_widget(Button(text="HOW TO OPERATE APP", size_hint_y=None, height=50, background_color=(0,0.6,0,1), on_press=lambda x: self.show_rules("HOW TO OPERATE", OPERATE)))
+        grid.add_widget(Button(text="APP RULES", size_hint_y=None, height=50, background_color=(0.05,0.14,0.31,1), on_press=lambda x: self.show_rules("APP RULES", APP_RULES)))
+        grid.add_widget(Button(text="IEBC RULES", size_hint_y=None, height=50, background_color=(0.7,0.08,0.12,1), on_press=lambda x: self.show_rules("IEBC RULES", IEBC_RULES)))
+        grid.add_widget(Button(text="RESET ALL", size_hint_y=None, height=50, background_color=(1,0,0,1), on_press=self.reset_all))
+        
+        scroll.add_widget(grid)
+        layout.add_widget(scroll)
+        self.add_widget(layout)
+
+    def save_e(self, _):
+        if not self.e_title.text.strip() or not self.e_pin.text.strip():
+            return
+        data["election"]["title"] = self.e_title.text.strip()
+        data["election"]["place"] = self.e_place.text.strip()
+        data["election"]["total"] = self.e_total.text.strip()
+        data["election"]["pin"] = self.e_pin.text.strip()
+        data["election"]["locked"] = True
+        save_data(data)
+        self.on_enter()
+
+    def unlock(self, _):
+        if self.unlock_input.text == data["election"]["pin"]:
+            data["election"]["locked"] = False
+            save_data(data)
+            self.on_enter()
+
+    def add_pos(self, _):
+        if self.e_pos.text.strip():
+            data["positions"].append(self.e_pos.text.strip().upper())
+            save_data(data)
+            self.on_enter()
+
+    def del_pos(self, _):
+        if data["positions"]:
+            data["positions"].pop()
+            save_data(data)
+            self.on_enter()
+
+    def reset_all(self, _):
+        data["election"] = {"title":"","place":"","pin":"","total":"","locked":False}
+        data["positions"] = []
+        data["candidates"] = []
+        data["voters"] = []
+        save_data(data)
+        self.on_enter()
+
+    def show_rules(self, title, rules):
+        self.manager.get_screen("rules").set_rules(title, rules)
+        self.manager.current = "rules"
+
+class CandidatesScreen(Screen):
+    cur_pic = ""
+    def on_enter(self):
+        self.clear_widgets()
+        layout = BoxLayout(orientation='vertical')
+        scroll = ScrollView()
+        grid = GridLayout(cols=1, size_hint_y=None, spacing=10, padding=10)
+        grid.bind(minimum_height=grid.setter('height'))
+
+        grid.add_widget(Label(text="CANDIDATES", size_hint_y=None, height=40, bold=True))
+        self.e_name = TextInput(hint_text="Full Name *", size_hint_y=None, height=40)
+        self.e_party = TextInput(hint_text="Party", size_hint_y=None, height=40)
+        self.e_cpos = TextInput(hint_text=f"POSITION * {','.join(data['positions'])}", size_hint_y=None, height=40)
+        grid.add_widget(self.e_name)
+        grid.add_widget(self.e_party)
+        grid.add_widget(self.e_cpos)
+        
+        self.pic_label = Label(text="No photo picked", size_hint_y=None, height=30)
+        grid.add_widget(self.pic_label)
+        
+        btn = Button(text="📷 PICK FROM GALLERY", size_hint_y=None, height=50, background_color=(0,1,1,1))
+        btn.bind(on_press=self.pick_gallery)
+        grid.add_widget(btn)
+
+        grid.add_widget(Label(text=f"Candidates: {len(data['candidates'])} added", size_hint_y=None, height=30))
+        for c in data["candidates"][-10:]:
+            grid.add_widget(Label(text=f"{c['name']} | {c['party']} | {c['pos']}", size_hint_y=None, height=30))
+
+        btn = Button(text="ADD CANDIDATE", size_hint_y=None, height=50, background_color=(0,0.6,0,1))
+        btn.bind(on_press=self.add_c)
+        grid.add_widget(btn)
+        grid.add_widget(Button(text="DELETE LAST", size_hint_y=None, height=40, background_color=(0.5,0.5,0.5,1), on_press=self.del_c))
+        grid.add_widget(Button(text=f"START VOTING ({len(data['candidates'])})", size_hint_y=None, height=60, background_color=(0,0,0,1), on_press=lambda x: setattr(self.manager, 'current', 'voting')))
+        grid.add_widget(Button(text="BACK TO HOME", size_hint_y=None, height=50, background_color=(0.05,0.14,0.31,1), on_press=lambda x: setattr(self.manager, 'current', 'setup')))
+
+        scroll.add_widget(grid)
+        layout.add_widget(scroll)
+        self.add_widget(layout)
+
+    def pick_gallery(self, _):
+        from plyer import filechooser
+        filechooser.open_file(on_selection=self.selected, filters=[".jpg",".png","*.jpeg"])
+
+    def selected(self, selection):
+        if selection:
+            f = selection[0]
+            dst = f"{self.e_name.text.strip().lower()}_{len(data['candidates'])}.jpg" if self.e_name.text.strip() else f"cand_{len(data['candidates'])}.jpg"
+            try:
+                shutil.copy(f, dst)
+                self.cur_pic = dst
+            except:
+                self.cur_pic = f
+            self.pic_label.text = f"Picked: {dst[-20:]}"
+
+    def add_c(self, _):
+        if self.e_name.text.strip() and self.e_cpos.text.strip().upper() in data["positions"]:
+            data["candidates"].append({"name":self.e_name.text.strip(),"party":self.e_party.text.strip() or "Independent","pos":self.e_cpos.text.strip().upper(),"pic":self.cur_pic or "","votes":0})
+            save_data(data)
+            self.cur_pic = ""
+            self.on_enter()
+
+    def del_c(self, _):
+        if data["candidates"]:
+            data["candidates"].pop()
+            save_data(data)
+            self.on_enter()
+
+class VotingScreen(Screen):
+    def on_enter(self):
+        self.clear_widgets()
+        layout = BoxLayout(orientation='vertical')
+        scroll = ScrollView()
+        grid = GridLayout(cols=1, size_hint_y=None, spacing=5, padding=10)
+        grid.bind(minimum_height=grid.setter('height'))
+
+        grid.add_widget(Label(text=f"VOTE - {data['election']['title']}", size_hint_y=None, height=40, bold=True))
+        self.e_adm = TextInput(hint_text="Adm No * Unique", size_hint_y=None, height=40)
+        self.e_vname = TextInput(hint_text="Full Name *", size_hint_y=None, height=40)
+        self.e_grade = TextInput(hint_text="Class/Grade *", size_hint_y=None, height=40)
+        grid.add_widget(self.e_adm)
+        grid.add_widget(self.e_vname)
+        grid.add_widget(self.e_grade)
+
+        self.selected = {}
+        for pos in data["positions"]:
+            grid.add_widget(Label(text=f"POSITION: {pos}", size_hint_y=None, height=40, bold=True, color=(1,1,1,1)))
+            for c in [x for x in data["candidates"] if x["pos"]==pos]:
+                btn = Button(text=f"{c['name']} - {c['party']}", size_hint_y=None, height=45)
+                def make(p=pos, n=c["name"], b=btn):
+                    def sel(_):
+                        self.selected[p]=n
+                        b.background_color=(0,1,0,1)
+                    return sel
+                btn.bind(on_press=make())
+                grid.add_widget(btn)
+
+        btn = Button(text="CONFIRM VOTE ALL - FINAL!", size_hint_y=None, height=60, background_color=(0,0.6,0,1))
+        btn.bind(on_press=self.confirm)
+        grid.add_widget(btn)
+        grid.add_widget(Button(text="BACK TO HOME", size_hint_y=None, height=50, background_color=(0.05,0.14,0.31,1), on_press=lambda x: setattr(self.manager, 'current', 'setup')))
+
+        scroll.add_widget(grid)
+        layout.add_widget(scroll)
+        self.add_widget(layout)
+
+    def confirm(self, _):
+        if not self.e_adm.text.strip() or not self.e_vname.text.strip():
+            return
+        if len(self.selected)!=len(data["positions"]):
+            return
+        if any(v["adm"]==self.e_adm.text.strip() for v in data["voters"]):
+            return
+        for pos,name in self.selected.items():
+            for c in data["candidates"]:
+                if c["name"]==name and c["pos"]==pos:
+                    c["votes"]+=1
+        data["voters"].append({"adm":self.e_adm.text.strip(),"name":self.e_vname.text.strip(),"grade":self.e_grade.text.strip(),"votes":dict(self.selected)})
+        save_data(data)
+        self.on_enter()
+
+class RulesScreen(Screen):
+    def set_rules(self, title, rules):
+        self.clear_widgets()
+        layout = BoxLayout(orientation='vertical')
+        layout.add_widget(Label(text=title+" - Full Page Scrollable", size_hint_y=None, height=50, bold=True))
+        scroll = ScrollView()
+        grid = GridLayout(cols=1, size_hint_y=None, spacing=10, padding=10)
+        grid.bind(minimum_height=grid.setter('height'))
+        for rule_title, rule_text in rules:
+            grid.add_widget(Label(text=rule_title, size_hint_y=None, height=40, bold=True, color=(1,1,1,1)))
+            grid.add_widget(Label(text=rule_text, size_hint_y=None, height=120, halign='left', text_size=(Window.width-40, None)))
+        grid.add_widget(Label(text=f"--- END OF {title} ---", size_hint_y=None, height=40, bold=True))
+        scroll.add_widget(grid)
+        layout.add_widget(scroll)
+        layout.add_widget(Button(text="⬅ BACK TO HOME", size_hint_y=None, height=60, background_color=(0.05,0.14,0.31,1), on_press=lambda x: setattr(self.manager, 'current', 'setup')))
+        self.add_widget(layout)
+
+# RULES DATA
+OPERATE = [
+    ("STEP 1: ADMIN SETUP", "Enter Title, Place, Total Voters, PIN. SAVE & LOCK. To edit, enter PIN to unlock."),
+    ("STEP 2: ADD POSITIONS", "Enter POSITION e.g., PRESIDENT. ADD POSITION. DELETE LAST if wrong. NEXT to candidates."),
+    ("STEP 3: ADD CANDIDATES WITH GALLERY", "Enter Name, Party, POSITION. PICK FROM GALLERY - Allow permission. ADD CANDIDATE. Photo from YOUR phone gallery."),
+    ("STEP 4: VOTING", "Enter Adm No, Name, Class. Select one per position. CONFIRM FINAL. Blocks double voting."),
+    ("STEP 5: RESULTS", "Enter Admin PIN to view results, winner per position."),
+    ("STEP 6: RULES AND RESET", "Read rules full page scrollable. RESET ALL deletes all."),
+]
+APP_RULES = [
+    ("RULE 1: ONE PERSON ONE VOTE", "Ensures each voter votes only once. Checks Adm No. Blocks double voting. Fairness equal."),
+    ("RULE 2: SECRET BALLOT", "Vote secret cannot be seen. Only total votes shown. Protects from intimidation."),
+    ("RULE 3: ADMIN LOCK", "Edited ONCE for security. Locks after save. Needs PIN to unlock. Prevents changing after start."),
+    ("RULE 4: MULTI-POSITIONS", "Many positions like President. One candidate per position. Vote all at once. Fast."),
+    ("RULE 5: GALLERY PHOTO", "Pick candidate photos from phone gallery. Tap ALLOW permission. Photo copied to app. Helps identify."),
+    ("RULE 6: OFFLINE", "Works without internet. Saved locally as voting.json. Works remote schools. No hacking online."),
+    ("RULE 7: TRANSPARENCY", "Results transparent protected by PIN. Shows total voted, votes per candidate, winner."),
+    ("RULE 8: FINAL VOTE", "Once CONFIRM FINAL, vote permanent. Cannot change. Shows VOTE RECORDED. Next voter."),
+    ("RULE 9: ANTI-REPETITION", "Checks Adm No to stop fraud. Blocks if Adm No voted. Prevents sharing Adm No."),
+    ("RULE 10: RESPONSIVE", "Fits phone, tablet, laptop. Text wraps. Scroll smooth."),
+]
+IEBC_RULES = [
+    ("ARTICLE 81", "Free fair secret ballot, free from violence intimidation corruption, transparent independent body."),
+    ("ARTICLE 83", "18+ Kenyan citizen ID, resident Kenya, not convicted election offence 5 years."),
+    ("ARTICLE 86", "Simple accurate verifiable secure transparent, openly counted at polling station."),
+    ("ARTICLE 88", "IEBC conducts elections, voter registration, boundaries, party nominations, 9 members."),
+    ("ARTICLE 89", "290 constituencies 47 counties, reviewed 8-12 years, population quota."),
+    ("ARTICLE 138", "President 50%+1 plus 25% in 24 counties, runoff top two in 30 days."),
+    ("BRIBERY", "Offering money food jobs to influence voter - 2M fine or 6 years jail."),
+    ("MULTIPLE VOTING", "Voting more than once - 6 years jail. Detected via biometric."),
+    ("FORM 34A", "Results declared at polling station, Presiding Officer fills Form 34A signed agents."),
+    ("KIEMS", "KIEMS kit mandatory biometric identification fingerprint."),
+]
+
+class VotingApp(App):
+    def build(self):
+        sm = ScreenManager()
+        sm.add_widget(WelcomeScreen(name="welcome"))
+        sm.add_widget(SetupScreen(name="setup"))
+        sm.add_widget(CandidatesScreen(name="candidates"))
+        sm.add_widget(VotingScreen(name="voting"))
+        sm.add_widget(RulesScreen(name="rules"))
+        return sm
+
+VotingApp().run()
